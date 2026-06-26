@@ -1,0 +1,16 @@
+database:
+  db_url: "postgresql+psycopg://gisuser:gispassword@localhost:5432/gis"
+  schema: "public"
+
+system:
+  concurrency_limit: 5
+  request_timeout_seconds: 15
+  user_agent_rotation: true
+
+caching:
+  enabled: true
+  db_path: "./cache/gis_cache.db"
+  ttl_days: 7
+
+storage:
+  output_directory: "./output"

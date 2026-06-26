@@ -1,0 +1,9 @@
+.venv/
+.idea/
+.env
+__pycache__/
+.pytest_cache/
+data_osm/
+data/
+output/
+cache/

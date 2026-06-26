@@ -1,0 +1,93 @@
+PS D:\A-VinVSF\gis-province-regulator> .venv\Scripts\python.exe src/loader.py
+============================================================
+BENCHMARK: GEOJSON LOADING PHASE
+============================================================
+2026-06-26 16:52:43,691 [INFO] Loading OSM from: D:\A-VinVSF\gis-province-regulator\data\osm\boundary.geojson 
+2026-06-26 16:52:53,315 [INFO] Loaded OSM: 8063 features.
+2026-06-26 16:52:53,318 [INFO] OSM CRS is EPSG:4326.
+2026-06-26 16:52:53,318 [INFO] Checking geometries for OSM...
+2026-06-26 16:52:53,820 [INFO] All geometries in OSM are valid.
+2026-06-26 16:52:53,824 [INFO] OSM spatial index generated successfully.
+--> OSM dataset loaded in: 10.13 seconds
+2026-06-26 16:52:53,824 [INFO] Loading Official from: D:\A-VinVSF\gis-province-regulator\data\official\boundary.geojson
+2026-06-26 16:53:22,901 [INFO] Loaded Official: 3323 features.      
+2026-06-26 16:53:22,902 [INFO] Official CRS is EPSG:4326.
+essfully.
+--> Official dataset loaded in: 32.79 seconds
+============================================================
+PS D:\A-VinVSF\gis-province-regulator> .venv\Scripts\python.exe src/matcher.py
+============================================================
+BENCHMARK: BOUNDARY MATCHING PHASE
+============================================================
+Loading datasets...
+2026-06-26 16:53:36,530 [INFO] Loading OSM from: D:\A-VinVSF\gis-province-regulator\data\osm\boundary.geojson 
+2026-06-26 16:53:46,405 [INFO] Loading Official from: D:\A-VinVSF\gis-province-regulator\data\official\boundary.geojson
+2026-06-26 16:54:17,605 [INFO] Loaded Official: 3323 features.
+2026-06-26 16:54:17,605 [INFO] Official CRS is EPSG:4326.
+2026-06-26 16:54:17,605 [INFO] Checking geometries for Official...
+2026-06-26 16:54:18,255 [WARNING] Found 78 invalid geometries in Official. Applying make_valid()...
+2026-06-26 16:54:21,271 [INFO] All geometries in Official are now valid.
+2026-06-26 16:54:21,272 [INFO] Official spatial index generated successfully.
+Matching boundaries...
+2026-06-26 16:54:21,273 [INFO] Starting Boundary Matching process...
+2026-06-26 16:54:21,274 [INFO] Projecting geometries to EPSG:3857 for metric calculations...
+2026-06-26 16:54:22,696 [INFO] Matching 3323 official boundaries against 8063 OSM boundaries...
+2026-06-26 16:54:33,482 [INFO] Processed matches: 1000...
+2026-06-26 16:54:48,383 [INFO] Processed matches: 2000...
+--> Saved intermediate matches to: D:\A-VinVSF\gis-province-regulator\output\comparison\matches_temp.json     
+============================================================
+PS D:\A-VinVSF\gis-province-regulator> .venv\Scripts\python.exe src/compare.py
+============================================================
+BENCHMARK: GEOMETRY COMPARISON PHASE
+============================================================
+Loading datasets...
+2026-06-26 16:55:23,427 [INFO] Loading OSM from: D:\A-VinVSF\gis-province-regulator\data\osm\boundary.geojson 
+2026-06-26 16:55:33,307 [INFO] Loading Official from: D:\A-VinVSF\gis-province-regulator\data\official\boundary.geojson
+2026-06-26 16:56:02,497 [INFO] Loaded Official: 3323 features.
+2026-06-26 16:56:02,498 [INFO] Official CRS is EPSG:4326.
+2026-06-26 16:56:02,498 [INFO] Checking geometries for Official...
+2026-06-26 16:56:03,155 [WARNING] Found 78 invalid geometries in Official. Applying make_valid()...
+2026-06-26 16:56:06,214 [INFO] All geometries in Official are now valid.
+2026-06-26 16:56:06,215 [INFO] Official spatial index generated successfully.
+Loading matches from: D:\A-VinVSF\gis-province-regulator\output\comparison\matches_temp.json
+Comparing geometries...
+2026-06-26 16:56:06,231 [INFO] Starting Geometry Comparison...
+2026-06-26 16:56:06,231 [INFO] Projecting datasets for metric calculations...
+2026-06-26 16:56:08,093 [INFO] Comparing 3321 matched pairs...
+2026-06-26 16:56:58,613 [INFO] Compared 2000 matches...
+2026-06-26 16:57:50,471 [INFO] Saving comparison outputs...
+2026-06-26 16:58:11,016 [INFO] Geometry compare complete. Saved difference, missing (2), and new (4746) to D:\A-VinVSF\gis-province-regulator\output\comparison
+--> Comparison phase completed in: 125.03 seconds
+============================================================
+PS D:\A-VinVSF\gis-province-regulator> .venv\Scripts\python.exe src/stats.py
+============================================================
+BENCHMARK: STATISTICS & VISUALS GENERATION
+============================================================
+Loading comparison results from: D:\A-VinVSF\gis-province-regulator\output\comparison\compare_result.json     
+Loading missing & new counts...
+Generating statistics reports and visual charts...
+2026-06-26 16:59:52,765 [INFO] Generating statistics and reports... 
+2026-06-26 16:59:53,223 [INFO] Saved Excel report successfully.     
+2026-06-26 16:59:53,230 [INFO] Statistics generated and saved to D:\A-VinVSF\gis-province-regulator\output\statistics
+--> Statistics phase completed in: 0.47 seconds
+============================================================        
+PS D:\A-VinVSF\gis-province-regulator> .venv\Scripts\python.exe src/candidate.py
+============================================================        
+BENCHMARK: AI CANDIDATE GENERATION
+============================================================        
+Loading comparison results from: D:\A-VinVSF\gis-province-regulator\output\comparison\compare_result.json
+Loading missing features from: D:\A-VinVSF\gis-province-regulator\output\comparison\missing.geojson
+Loading official dataset...
+2026-06-26 16:59:58,473 [INFO] Loading Official from: D:\A-VinVSF\gis-province-regulator\data\official\boundary.geojson
+2026-06-26 17:00:28,166 [INFO] Loaded Official: 3323 features.
+2026-06-26 17:00:28,167 [INFO] Official CRS is EPSG:4326.
+2026-06-26 17:00:28,167 [INFO] Checking geometries for Official...  
+2026-06-26 17:00:28,823 [WARNING] Found 78 invalid geometries in Official. Applying make_valid()...
+2026-06-26 17:00:31,974 [INFO] All geometries in Official are now valid.
+2026-06-26 17:00:31,976 [INFO] Official spatial index generated successfully.
+Generating AI candidates...
+2026-06-26 17:00:31,976 [INFO] Generating Candidates for AI and review...
+2026-06-26 17:00:52,522 [INFO] Candidate generator complete. Saved 3323 candidates to D:\A-VinVSF\gis-province-regulator\output\candidates
+--> Candidates phase completed in: 20.83 seconds
+============================================================
+PS D:\A-VinVSF\gis-province-regulator> 

@@ -1,0 +1,20 @@
+sites:
+  - name: "Local Boundary Run"
+    enabled: true
+    local_file: "output/sample_official_boundary.geojson"
+    official_table: "official_boundary"
+    osm_table: "planet_osm_polygon"
+    match_column: null  # Uses spatial matching
+    srid: 3857          # Matches planet_osm_polygon (3857)
+    official_name_col: "official_name"
+    osm_name_col: "name"
+
+  - name: "Bản đồ số NARENCA"
+    entry_url: "https://cosodulieu.bando.com.vn/"
+    enabled: false
+    official_table: "narenca_official"
+    osm_table: "planet_osm_polygon"
+    match_column: null
+    srid: 3857
+    official_name_col: "official_name"
+    osm_name_col: "name"
