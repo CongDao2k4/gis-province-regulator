@@ -69,7 +69,7 @@ class Pipeline:
             off_name_col = 'a03_ten' if 'a03_ten' in off_gdf.columns else 'name'
             off_prov_col = 'a04_tentinh' if 'a04_tentinh' in off_gdf.columns else 'province'
             
-            osm_id_col = 'id' if 'id' in osm_gdf.columns else 'osm_id'
+            osm_id_col = '@id' if '@id' in osm_gdf.columns else ('id' if 'id' in osm_gdf.columns else 'osm_id')
             osm_name_col = 'name' if 'name' in osm_gdf.columns else 'name'
 
             # Simplify Official
@@ -129,9 +129,10 @@ class Pipeline:
 
         # 5. Generate Candidates
         console.print("\n[bold cyan]5. GENERATING CANDIDATES[/bold cyan]")
-        # Load missing features
+        # Load missing and new features
         missing_features = missing_data.get("features", []) if 'missing_data' in locals() else []
-        candidate_gen = CandidateGenerator(compare_results, missing_features, off_gdf)
+        new_features = new_data.get("features", []) if 'new_data' in locals() else []
+        candidate_gen = CandidateGenerator(compare_results, missing_features, new_features, off_gdf)
         candidates = candidate_gen.generate(self.candidates_dir)
 
         console.print("\n[bold green]=========================================[/bold green]")
@@ -140,10 +141,10 @@ class Pipeline:
         
         # Output simple summary
         print(f"Summary metrics:")
-        print(f" - Perfect Match: {stats['Summary']['PerfectMatch']}")
-        print(f" - Changed:       {stats['Summary']['Changed']}")
-        print(f" - Missing:       {stats['Summary']['MissingInOSM']}")
-        print(f" - New:           {stats['Summary']['NewInOSM']}")
+        print(f" - Perfect Match: {stats['Summary']['perfect_match']}")
+        print(f" - Changed:       {stats['Summary']['need_update']}")
+        print(f" - Missing:       {stats['Summary']['need_add']}")
+        print(f" - New:           {stats['Summary']['need_delete']}")
         print(f"All output files written to segmented subfolders under: {self.output_dir}")
 
 if __name__ == "__main__":

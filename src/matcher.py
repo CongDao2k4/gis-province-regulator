@@ -46,10 +46,10 @@ class BoundaryMatcher:
         logger.info("Starting Boundary Matching process...")
         
         # Ensure geometries are projected to a meter-based coordinate system for accurate area calculations
-        # EPSG:3857 (Web Mercator) is suitable for local area calculations
-        logger.info("Projecting geometries to EPSG:3857 for metric calculations...")
-        off_proj = self.off_gdf.to_crs(epsg=3857)
-        osm_proj = self.osm_gdf.to_crs(epsg=3857)
+        # EPSG:32648 (UTM Zone 48N) is highly accurate for Vietnam
+        logger.info("Projecting geometries to EPSG:32648 (UTM Zone 48N) for metric calculations...")
+        off_proj = self.off_gdf.to_crs(epsg=32648)
+        osm_proj = self.osm_gdf.to_crs(epsg=32648)
         
         # Ensure spatial index is built
         osm_sindex = osm_proj.sindex
@@ -71,8 +71,10 @@ class BoundaryMatcher:
         )
         
         # OSM: look for common ID and name fields
-        osm_id_col = 'id' if 'id' in osm_proj.columns else (
-            'osm_id' if 'osm_id' in osm_proj.columns else None
+        osm_id_col = '@id' if '@id' in osm_proj.columns else (
+            'id' if 'id' in osm_proj.columns else (
+                'osm_id' if 'osm_id' in osm_proj.columns else None
+            )
         )
         osm_name_col = 'name' if 'name' in osm_proj.columns else None
         
@@ -158,7 +160,14 @@ class BoundaryMatcher:
                     }
             
             # Step 3: Classify match or add to unmatched
-            if best_candidate and best_score >= 0.15:  # Require at least 15% IoU to filter out mismatched levels
+            # To prevent matching a missing commune to its containing district:
+            # Reject matches that have both low name similarity (< 0.40) and low IoU/score (< 0.50)
+            is_valid_match = True
+            if best_candidate:
+                if best_candidate['name_similarity'] < 0.40 and best_candidate['score'] < 0.50:
+                    is_valid_match = False
+            
+            if best_candidate and best_score >= 0.15 and is_valid_match:
                 matches.append({
                     'official_id': off_id,
                     'official_name': off_name,

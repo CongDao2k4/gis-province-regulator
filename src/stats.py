@@ -16,8 +16,8 @@ logger = logging.getLogger("stats")
 class StatisticsGenerator:
     """
     Generates statistics reports:
-    - Counts of Matched, Missing, Changed, New.
-    - Top 100 difference rankings.
+    - Counts of Matched (Khớp), Missing (Cần thêm mới), Changed (Cần sửa), New (Cần xóa).
+    - Ranking of differences.
     - Exports to CSV, Excel, JSON, and HTML.
     - Generates visual reports (Histogram & Pie Chart) and embeds them in HTML.
     """
@@ -39,21 +39,21 @@ class StatisticsGenerator:
             changed = self.df[self.df['overlap_ratio'] < 0.98]
             
             stats["Summary"] = {
-                "Total_Official": len(self.df) + self.missing_count,
-                "Total_OSM_Matched": len(self.df),
-                "PerfectMatch": len(perfect_matches),
-                "Changed": len(changed),
-                "MissingInOSM": self.missing_count,
-                "NewInOSM": self.new_count
+                "total_official": len(self.df) + self.missing_count,
+                "total_matched": len(self.df),
+                "perfect_match": len(perfect_matches),
+                "need_update": len(changed),
+                "need_add": self.missing_count,
+                "need_delete": self.new_count
             }
         else:
             stats["Summary"] = {
-                "Total_Official": self.missing_count,
-                "Total_OSM_Matched": 0,
-                "PerfectMatch": 0,
-                "Changed": 0,
-                "MissingInOSM": self.missing_count,
-                "NewInOSM": self.new_count
+                "total_official": self.missing_count,
+                "total_matched": 0,
+                "perfect_match": 0,
+                "need_update": 0,
+                "need_add": self.missing_count,
+                "need_delete": self.new_count
             }
 
         # 1. Generate Matplotlib Charts
@@ -65,9 +65,9 @@ class StatisticsGenerator:
             if not self.df.empty:
                 plt.figure(figsize=(6, 4))
                 plt.hist(self.df['overlap_ratio'] * 100, bins=20, color='#3186cc', edgecolor='black', alpha=0.7)
-                plt.title("Distribution of Overlap Ratios (%)", fontsize=12, fontweight='bold')
-                plt.xlabel("Overlap Ratio (%)", fontsize=10)
-                plt.ylabel("Frequency", fontsize=10)
+                plt.title("Biểu đồ phân phối tỉ lệ trùng khớp (%)", fontsize=12, fontweight='bold')
+                plt.xlabel("Tỉ lệ trùng khớp (%)", fontsize=10)
+                plt.ylabel("Tần suất", fontsize=10)
                 plt.grid(axis='y', linestyle='--', alpha=0.7)
                 plt.tight_layout()
                 
@@ -80,12 +80,12 @@ class StatisticsGenerator:
             
             # Pie Chart of Categories
             plt.figure(figsize=(6, 4))
-            labels = ['Perfect Match', 'Changed/Diff', 'Missing in OSM', 'New in OSM']
+            labels = ['Khớp hoàn hảo', 'Cần sửa ranh giới', 'Cần thêm mới', 'Cần xóa ở OSM']
             sizes = [
-                stats["Summary"]["PerfectMatch"],
-                stats["Summary"]["Changed"],
-                stats["Summary"]["MissingInOSM"],
-                stats["Summary"]["NewInOSM"]
+                stats["Summary"]["perfect_match"],
+                stats["Summary"]["need_update"],
+                stats["Summary"]["need_add"],
+                stats["Summary"]["need_delete"]
             ]
             colors = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db']
             
@@ -95,7 +95,7 @@ class StatisticsGenerator:
                 p_labels, p_sizes, p_colors = zip(*pie_data)
                 plt.pie(p_sizes, labels=p_labels, colors=p_colors, autopct='%1.1f%%', startangle=140, 
                         textprops={'fontsize': 10})
-                plt.title("Boundary Comparison Summary", fontsize=12, fontweight='bold')
+                plt.title("Phân bổ kết quả đối soát ranh giới", fontsize=12, fontweight='bold')
                 plt.tight_layout()
                 
                 pie_path = os.path.join(output_dir, "status_pie_chart.png")
@@ -128,7 +128,7 @@ class StatisticsGenerator:
         except Exception as e:
             logger.warning(f"Could not save Excel file (missing openpyxl?): {e}")
 
-        # 4. Export HTML Report
+        # 4. Export HTML Report (in Vietnamese)
         html_path = os.path.join(output_dir, "statistics.html")
         
         top_rows_html = ""
@@ -148,13 +148,13 @@ class StatisticsGenerator:
                 </tr>
                 """
         else:
-            top_rows_html = "<tr><td colspan='9' style='text-align:center;'>No differences found.</td></tr>"
+            top_rows_html = "<tr><td colspan='9' style='text-align:center;'>Không tìm thấy xã nào có sai lệch.</td></tr>"
 
         html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>GIS Boundary Comparison Statistics Report</title>
+    <title>Báo cáo Thống kê Đối soát Ranh giới Hành chính GIS</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -233,52 +233,52 @@ class StatisticsGenerator:
 </head>
 <body>
     <div class="container">
-        <h1>GIS Boundary Match & Comparison Report</h1>
-        <p>Generated automatically on 2026-06-26</p>
+        <h1>Báo cáo Thống kê Đối soát Ranh giới Hành chính (Official vs OSM)</h1>
+        <p>Hệ thống tự động chạy đối soát ranh giới cấp Xã/Phường Việt Nam</p>
         
-        <h2>Overall Summary</h2>
+        <h2>Tổng quan kết quả đối soát</h2>
         <div class="summary-cards">
             <div class="card">
-                <div>Total Official Communes</div>
-                <div class="card-value">{stats["Summary"]["Total_Official"]}</div>
+                <div>Tổng số xã Nhà nước (Official)</div>
+                <div class="card-value">{stats["Summary"]["total_official"]}</div>
             </div>
             <div class="card success">
-                <div>Perfect Match (&ge;98% overlap)</div>
-                <div class="card-value">{stats["Summary"]["PerfectMatch"]}</div>
+                <div>Trùng khớp hoàn hảo (&ge;98% trùng)</div>
+                <div class="card-value">{stats["Summary"]["perfect_match"]}</div>
             </div>
             <div class="card warning">
-                <div>Changed (Geometry Diff)</div>
-                <div class="card-value">{stats["Summary"]["Changed"]}</div>
+                <div>Vùng cần sửa ranh giới (Lệch ranh giới)</div>
+                <div class="card-value">{stats["Summary"]["need_update"]}</div>
             </div>
             <div class="card danger">
-                <div>Missing in OSM</div>
-                <div class="card-value">{stats["Summary"]["MissingInOSM"]}</div>
+                <div>Vùng cần thêm mới (Thiếu trên OSM)</div>
+                <div class="card-value">{stats["Summary"]["need_add"]}</div>
             </div>
             <div class="card">
-                <div>New in OSM</div>
-                <div class="card-value">{stats["Summary"]["NewInOSM"]}</div>
+                <div>Vùng cần xóa ở OSM (Thừa trên OSM)</div>
+                <div class="card-value">{stats["Summary"]["need_delete"]}</div>
             </div>
         </div>
-
-        <h2>Visualizations</h2>
+ 
+        <h2>Biểu đồ phân tích</h2>
         <div class="charts">
-            {"<div class='chart-container'><h3>Overlap Ratios</h3><img src='data:image/png;base64," + hist_base64 + "' /></div>" if hist_base64 else ""}
-            {"<div class='chart-container'><h3>Category Distribution</h3><img src='data:image/png;base64," + pie_base64 + "' /></div>" if pie_base64 else ""}
+            {"<div class='chart-container'><h3>Tỉ lệ trùng khớp hình học</h3><img src='data:image/png;base64," + hist_base64 + "' /></div>" if hist_base64 else ""}
+            {"<div class='chart-container'><h3>Tỉ lệ phần trăm các nhóm</h3><img src='data:image/png;base64," + pie_base64 + "' /></div>" if pie_base64 else ""}
         </div>
-
-        <h2>Top 100 Geometry Differences (by Area Difference)</h2>
+ 
+        <h2>Top 100 Xã lệch ranh giới nhiều nhất (Theo diện tích lệch m²)</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Official ID</th>
-                    <th>Official Name</th>
-                    <th>Province</th>
-                    <th>OSM ID</th>
-                    <th>OSM Name</th>
-                    <th>Overlap Ratio</th>
-                    <th>IoU</th>
-                    <th>Area Diff (sq m)</th>
-                    <th>Hausdorff Dist (m)</th>
+                    <th>Mã Xã Official</th>
+                    <th>Tên Xã Official</th>
+                    <th>Tỉnh/Thành phố</th>
+                    <th>OSM Relation ID</th>
+                    <th>Tên Xã OSM</th>
+                    <th>Tỷ lệ trùng</th>
+                    <th>Chỉ số IoU</th>
+                    <th>Diện tích lệch (m²)</th>
+                    <th>Khoảng cách Hausdorff (m)</th>
                 </tr>
             </thead>
             <tbody>

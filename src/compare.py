@@ -31,10 +31,10 @@ class GeometryComparer:
         os.makedirs(output_dir, exist_ok=True)
         
         # Build dictionaries of geometries for fast lookup
-        # Project both to EPSG:3857 for metric calculations
-        logger.info("Projecting datasets for metric calculations...")
-        off_proj = self.off_gdf.to_crs(epsg=3857)
-        osm_proj = self.osm_gdf.to_crs(epsg=3857)
+        # Project both to EPSG:32648 (UTM Zone 48N) for metric calculations
+        logger.info("Projecting datasets to EPSG:32648 for metric calculations...")
+        off_proj = self.off_gdf.to_crs(epsg=32648)
+        osm_proj = self.osm_gdf.to_crs(epsg=32648)
         
         # Build lookup tables
         off_id_col = 'a02_xa' if 'a02_xa' in off_proj.columns else (
@@ -44,8 +44,10 @@ class GeometryComparer:
             'name' if 'name' in off_proj.columns else None
         )
         
-        osm_id_col = 'id' if 'id' in osm_proj.columns else (
-            'osm_id' if 'osm_id' in osm_proj.columns else None
+        osm_id_col = '@id' if '@id' in osm_proj.columns else (
+            'id' if 'id' in osm_proj.columns else (
+                'osm_id' if 'osm_id' in osm_proj.columns else None
+            )
         )
         osm_name_col = 'name' if 'name' in osm_proj.columns else None
         

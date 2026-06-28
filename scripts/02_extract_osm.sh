@@ -14,8 +14,8 @@ mkdir -p data/osm
 echo "[INFO] Đang lọc dữ liệu hành chính từ OSM PBF (Bước 1: Lấy boundary=administrative)..."
 osmium tags-filter "$INPUT_FILE" boundary=administrative -o data/osm/temp_admin.osm.pbf --overwrite
 
-echo "[INFO] Đang lọc dữ liệu hành chính từ OSM PBF (Bước 2: Lọc tiếp admin_level=4,5,6,7,8)..."
-osmium tags-filter data/osm/temp_admin.osm.pbf admin_level=4,5,6,7,8 -o "$FILTERED_FILE" --overwrite
+echo "[INFO] Đang lọc dữ liệu hành chính từ OSM PBF (Bước 2: Lọc tiếp admin_level=4,5,6,7,8,9)..."
+osmium tags-filter data/osm/temp_admin.osm.pbf admin_level=4,5,6,7,8,9 -o "$FILTERED_FILE" --overwrite
 
 # Xoá file tạm sau khi lọc xong
 rm data/osm/temp_admin.osm.pbf

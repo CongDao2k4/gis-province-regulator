@@ -7,248 +7,107 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import { Style, Fill, Stroke } from 'ol/style'
-import Overlay from 'ol/Overlay'
 import 'ol/ol.css'
 import './App.css'
 
-interface LayerState {
-  osmBase: boolean;
-  official: boolean;
-  osmBoundary: boolean;
-  difference: boolean;
-  missing: boolean;
-  newBoundary: boolean;
-}
-
-interface OpacityState {
-  osmBase: number;
-  official: number;
-  osmBoundary: number;
-  difference: number;
-  missing: number;
-  newBoundary: number;
+interface Candidate {
+  official_id: string;
+  official_name: string;
+  province: string;
+  osm_id: string;
+  osm_name: string;
+  category: string;
+  overlap_ratio: number;
+  name_similarity: number;
+  reason: string;
 }
 
 function App() {
   const mapElement = useRef<HTMLDivElement>(null)
-  const popupElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Map | null>(null)
+  const activeSourceRef = useRef<VectorSource | null>(null)
   
   const [stats, setStats] = useState<any>(null)
-  const [selectedFeature, setSelectedFeature] = useState<any>(null)
-  
-  // Layer visibility state
-  const [layers, setLayers] = useState<LayerState>({
-    osmBase: true,
-    official: true,
-    osmBoundary: false,
-    difference: true,
-    missing: true,
-    newBoundary: true,
-  })
-
-  // Layer opacity state
-  const [opacities, setOpacities] = useState<OpacityState>({
-    osmBase: 1.0,
-    official: 0.6,
-    osmBoundary: 0.6,
-    difference: 0.8,
-    missing: 0.8,
-    newBoundary: 0.8,
-  })
-
-  // Layer references
-  const layersRef = useRef<{ [key: string]: TileLayer<any> | VectorLayer<any> }>({})
-
-  // Search state
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
+  const [activeTab, setActiveTab] = useState<'edit' | 'add' | 'delete'>('edit')
+  const [loadingGeom, setLoadingGeom] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
 
+  // 1. Fetch initial statistics and candidates metadata (extremely lightweight)
   useEffect(() => {
-    // Fetch stats on load
     fetch('http://localhost:8000/statistics')
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(err => console.error("Error fetching stats:", err))
+
+    fetch('http://localhost:8000/candidates/metadata')
+      .then(res => res.json())
+      .then(data => setCandidates(data))
+      .catch(err => console.error("Error fetching candidates:", err))
   }, [])
 
+  // 2. Initialize Map (only base OSM layer + active vector layer for selection)
   useEffect(() => {
-    if (!mapElement.current || !popupElement.current) return;
+    if (!mapElement.current) return;
 
-    // --- 1. Sources ---
-    const officialSource = new VectorSource({
-      url: 'http://localhost:8000/official/communes',
-      format: new GeoJSON()
-    })
-
-    const osmBoundarySource = new VectorSource({
-      url: 'http://localhost:8000/osm/communes',
-      format: new GeoJSON()
-    })
-
-    const diffSource = new VectorSource({
-      url: 'http://localhost:8000/difference',
-      format: new GeoJSON()
-    })
-
-    const missingSource = new VectorSource({
-      url: 'http://localhost:8000/missing',
-      format: new GeoJSON()
-    })
-
-    const newSource = new VectorSource({
-      url: 'http://localhost:8000/new',
-      format: new GeoJSON()
-    })
-
-    // --- 2. Styles ---
-    const officialStyle = new Style({
-      fill: new Fill({ color: 'rgba(49, 134, 204, 0.08)' }),
-      stroke: new Stroke({ color: '#3186cc', width: 1.5 })
-    })
-
-    const osmBoundaryStyle = new Style({
-      fill: new Fill({ color: 'rgba(46, 204, 113, 0.08)' }),
-      stroke: new Stroke({ color: '#2ecc71', width: 1.5 })
-    })
-
-    const diffStyleFunc = (feature: any) => {
-      const color = feature.get('fillColor') || 'red'
-      let fillColor = 'rgba(255, 0, 0, 0.6)'
-      let strokeColor = '#e74c3c'
-      
-      if (color === 'red') {
-        fillColor = 'rgba(231, 76, 60, 0.6)'
-        strokeColor = '#e74c3c'
-      } else if (color === 'blue') {
-        fillColor = 'rgba(52, 152, 219, 0.6)'
-        strokeColor = '#3498db'
-      } else if (color === 'yellow') {
-        fillColor = 'rgba(241, 196, 15, 0.4)'
-        strokeColor = '#f1c40f'
-      } else if (color === 'purple') {
-        fillColor = 'rgba(155, 89, 182, 0.6)'
-        strokeColor = '#9b59b6'
-      }
-      
-      return new Style({
-        fill: new Fill({ color: fillColor }),
-        stroke: new Stroke({ color: strokeColor, width: 2 })
-      })
-    }
-
-    const missingStyle = new Style({
-      fill: new Fill({ color: 'rgba(231, 76, 60, 0.2)' }),
-      stroke: new Stroke({ color: '#e74c3c', width: 2, lineDash: [4, 4] })
-    })
-
-    const newStyle = new Style({
-      fill: new Fill({ color: 'rgba(52, 152, 219, 0.2)' }),
-      stroke: new Stroke({ color: '#3498db', width: 2, lineDash: [4, 4] })
-    })
-
-    // --- 3. Layers ---
     const osmBaseLayer = new TileLayer({
       source: new OSM(),
-      visible: layers.osmBase,
-      opacity: opacities.osmBase
+      opacity: 0.9
     })
 
-    const officialLayer = new VectorLayer({
-      source: officialSource,
-      style: officialStyle,
-      visible: layers.official,
-      opacity: opacities.official
-    })
+    const activeSource = new VectorSource()
+    activeSourceRef.current = activeSource
 
-    const osmBoundaryLayer = new VectorLayer({
-      source: osmBoundarySource,
-      style: osmBoundaryStyle,
-      visible: layers.osmBoundary,
-      opacity: opacities.osmBoundary
-    })
-
-    const diffLayer = new VectorLayer({
-      source: diffSource,
-      style: diffStyleFunc,
-      visible: layers.difference,
-      opacity: opacities.difference
-    })
-
-    const missingLayer = new VectorLayer({
-      source: missingSource,
-      style: missingStyle,
-      visible: layers.missing,
-      opacity: opacities.missing
-    })
-
-    const newLayer = new VectorLayer({
-      source: newSource,
-      style: newStyle,
-      visible: layers.newBoundary,
-      opacity: opacities.newBoundary
-    })
-
-    // Store layer references
-    layersRef.current = {
-      osmBase: osmBaseLayer,
-      official: officialLayer,
-      osmBoundary: osmBoundaryLayer,
-      difference: diffLayer,
-      missing: missingLayer,
-      newBoundary: newLayer
+    // Style function to render Official boundary, OSM boundary, and differences with unique styles
+    const activeSelectedStyleFunc = (feature: any) => {
+      const type = feature.get('layerType')
+      if (type === 'official') {
+        return new Style({
+          fill: new Fill({ color: 'rgba(52, 152, 219, 0.12)' }),
+          stroke: new Stroke({ color: '#3498db', width: 2.5 })
+        })
+      } else if (type === 'osm') {
+        return new Style({
+          fill: new Fill({ color: 'rgba(46, 204, 113, 0.12)' }),
+          stroke: new Stroke({ color: '#2ecc71', width: 2.5 })
+        })
+      } else if (type === 'difference') {
+        const fillColorVal = feature.get('fillColor')
+        let fillColor = 'rgba(231, 76, 60, 0.45)' // red: excess OSM
+        let strokeColor = '#e74c3c'
+        
+        if (fillColorVal === 'blue') {
+          fillColor = 'rgba(52, 152, 219, 0.45)' // blue: missing on OSM
+          strokeColor = '#3498db'
+        } else if (fillColorVal === 'yellow') {
+          fillColor = 'rgba(241, 196, 15, 0.35)' // yellow: intersection
+          strokeColor = '#f1c40f'
+        } else if (fillColorVal === 'purple') {
+          fillColor = 'rgba(155, 89, 182, 0.45)' // purple: shape changed
+          strokeColor = '#9b59b6'
+        }
+        
+        return new Style({
+          fill: new Fill({ color: fillColor }),
+          stroke: new Stroke({ color: strokeColor, width: 1.5 })
+        })
+      }
+      return new Style({})
     }
 
-    // --- 4. Popup Overlay ---
-    const popup = new Overlay({
-      element: popupElement.current,
-      positioning: 'bottom-center',
-      stopEvent: true,
-      offset: [0, -10],
+    const activeSelectedLayer = new VectorLayer({
+      source: activeSource,
+      style: activeSelectedStyleFunc
     })
 
-    // Fit map to difference layer bounds once loaded
-    diffSource.on('featuresloadend', () => {
-      const extent = diffSource.getExtent();
-      if (extent && extent[0] !== Infinity && extent[0] !== -Infinity) {
-        map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
-      }
-    });
-
-    // --- 5. Map Init ---
     const map = new Map({
       target: mapElement.current,
-      layers: [
-        osmBaseLayer,
-        officialLayer,
-        osmBoundaryLayer,
-        diffLayer,
-        missingLayer,
-        newLayer
-      ],
-      overlays: [popup],
+      layers: [osmBaseLayer, activeSelectedLayer],
       view: new View({
-        center: [11796120.31, 1797825.13], // Vietnam coordinates in EPSG:3857
+        center: [12000000, 1800000], // Centered around Vietnam
         zoom: 6
       })
-    })
-
-    // --- 6. Event Handlers ---
-    map.on('click', (evt) => {
-      const feature = map.forEachFeatureAtPixel(evt.pixel, (feat) => feat)
-      if (feature) {
-        const props = feature.getProperties()
-        setSelectedFeature(props)
-        popup.setPosition(evt.coordinate)
-      } else {
-        setSelectedFeature(null)
-        popup.setPosition(undefined)
-      }
-    })
-
-    map.on('pointermove', (e) => {
-      const hit = map.hasFeatureAtPixel(e.pixel)
-      map.getTargetElement().style.cursor = hit ? 'pointer' : ''
     })
 
     mapRef.current = map
@@ -258,269 +117,375 @@ function App() {
     }
   }, [])
 
-  // Sync layer visibility
-  useEffect(() => {
-    Object.keys(layers).forEach(key => {
-      const layer = layersRef.current[key];
-      if (layer) {
-        layer.setVisible(layers[key as keyof LayerState]);
-      }
-    });
-  }, [layers])
+  // 3. Load geometry for the selected candidate on-demand (Fast O(1) fetch)
+  const handleSelectCandidate = (candidate: Candidate) => {
+    setSelectedCandidate(candidate)
+    if (!activeSourceRef.current || !mapRef.current) return;
 
-  // Sync layer opacity
-  useEffect(() => {
-    Object.keys(opacities).forEach(key => {
-      const layer = layersRef.current[key];
-      if (layer) {
-        layer.setOpacity(opacities[key as keyof OpacityState]);
-      }
-    });
-  }, [opacities])
+    setLoadingGeom(true)
+    activeSourceRef.current.clear()
 
-  // Handle Layer Toggle
-  const toggleLayer = (layerName: keyof LayerState) => {
-    setLayers(prev => ({
-      ...prev,
-      [layerName]: !prev[layerName]
-    }))
-  }
+    fetch(`http://localhost:8000/candidate/${candidate.official_id}/geometry?osm_id=${candidate.osm_id}`)
+      .then(res => res.json())
+      .then(data => {
+        const format = new GeoJSON()
+        const features: any[] = []
 
-  // Handle Opacity Change
-  const changeOpacity = (layerName: keyof OpacityState, value: number) => {
-    setOpacities(prev => ({
-      ...prev,
-      [layerName]: value
-    }))
-  }
+        // Parse official geometry
+        if (data.official) {
+          const feat = format.readFeature(data.official, {
+            dataProjection: 'EPSG:4326',
+            featureProjection: 'EPSG:3857'
+          })
+          feat.set('layerType', 'official')
+          features.push(feat)
+        }
 
-  // Handle Search Input & Fetch
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value
-    setSearchQuery(val)
-    if (val.trim().length >= 2) {
-      fetch(`http://localhost:8000/search?q=${encodeURIComponent(val)}`)
-        .then(res => res.json())
-        .then(data => setSearchResults(data.features || []))
-        .catch(err => console.error("Search error:", err))
-    } else {
-      setSearchResults([])
-    }
-  }
+        // Parse OSM geometry
+        if (data.osm) {
+          const feat = format.readFeature(data.osm, {
+            dataProjection: 'EPSG:4326',
+            featureProjection: 'EPSG:3857'
+          })
+          feat.set('layerType', 'osm')
+          features.push(feat)
+        }
 
-  // Navigate & Zoom to Search Feature
-  const selectSearchFeature = (feat: any) => {
-    if (!mapRef.current) return;
-    
-    const format = new GeoJSON()
-    const olFeature = format.readFeature(feat, {
-      dataProjection: 'EPSG:4326',
-      featureProjection: 'EPSG:3857'
-    })
-    
-    const geometry = olFeature.getGeometry()
-    if (geometry) {
-      const extent = geometry.getExtent()
-      mapRef.current.getView().fit(extent, {
-        duration: 1000,
-        padding: [100, 100, 100, 100],
-        maxZoom: 14
+        // Parse difference geometries
+        if (data.difference && data.difference.features) {
+          data.difference.features.forEach((f: any) => {
+            const feat = format.readFeature(f, {
+              dataProjection: 'EPSG:4326',
+              featureProjection: 'EPSG:3857'
+            })
+            feat.set('layerType', 'difference')
+            features.push(feat)
+          })
+        }
+
+        if (activeSourceRef.current) {
+          activeSourceRef.current.addFeatures(features)
+          const extent = activeSourceRef.current.getExtent()
+          if (extent && extent[0] !== Infinity && extent[0] !== -Infinity) {
+            mapRef.current.getView().fit(extent, {
+              duration: 800,
+              padding: [80, 80, 80, 80],
+              maxZoom: 15
+            })
+          }
+        }
+        setLoadingGeom(false)
       })
-      setSelectedFeature(feat.properties)
-      // Set popup position to center/centroid
-      const flatCoords = geometry.getExtent();
-      const center = [(flatCoords[0] + flatCoords[2]) / 2, (flatCoords[1] + flatCoords[3]) / 2];
-      
-      // Update popup overlay
-      const popup = mapRef.current.getOverlays().getArray()[0];
-      if (popup) {
-        popup.setPosition(center);
-      }
-    }
-    setSearchResults([])
+      .catch(err => {
+        console.error("Error loading candidate geometries:", err)
+        setLoadingGeom(false)
+      })
   }
+
+  // 4. Synchronize modifications to OSM database (Simulated OSM API request)
+  const handleSyncToOSM = () => {
+    if (!selectedCandidate) return;
+
+    const action = activeTab === 'add' ? 'create' : (activeTab === 'delete' ? 'delete' : 'modify');
+    
+    fetch('http://localhost:8000/api/edit-osm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        official_id: selectedCandidate.official_id,
+        osm_id: selectedCandidate.osm_id,
+        action: action
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        alert(data.message)
+      })
+      .catch(err => {
+        console.error("OSM sync error:", err)
+        alert("Có lỗi xảy ra khi đồng bộ lên OSM.")
+      })
+  }
+
+  // Filter candidates based on active tab
+  const filteredCandidates = candidates.filter(c => {
+    const isTabMatch = 
+      activeTab === 'add' ? c.category === 'Missing' :
+      activeTab === 'delete' ? c.category === 'New' :
+      (c.category === 'Need Update' || c.category === 'Need Review');
+      
+    if (!isTabMatch) return false;
+
+    // Optional name search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      const name = (c.official_name || c.osm_name || '').toLowerCase()
+      return name.includes(q)
+    }
+    return true;
+  })
 
   return (
     <div className="app-container dark-theme">
-      <div className="sidebar">
+      {/* Sidebar Panel */}
+      <div className="sidebar" style={{ display: 'flex', flexDirection: 'column' }}>
         <div className="logo-section">
           <h2>GIS REGULATOR</h2>
-          <span className="subtitle font-outfit">Boundary Checker</span>
+          <span className="subtitle font-outfit">OSM Boundary Normalization</span>
         </div>
 
-        {/* Section 1: Search */}
-        <div className="sidebar-section search-section">
-          <h3>🔍 Search Communes</h3>
-          <div className="search-box">
-            <input
-              type="text"
-              placeholder="Type commune name..."
-              value={searchQuery}
-              onChange={handleSearchChange}
-            />
-            {searchResults.length > 0 && (
-              <ul className="search-results">
-                {searchResults.map((feat, i) => (
-                  <li key={i} onClick={() => selectSearchFeature(feat)}>
-                    {feat.properties.a03_ten || feat.properties.name} 
-                    <span className="result-prov">({feat.properties.a04_tentinh || 'N/A'})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+        {/* Tab Selection */}
+        <div className="tab-container" style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+          <button 
+            className={`tab-btn ${activeTab === 'edit' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('edit'); setSelectedCandidate(null); }}
+            style={tabButtonStyle(activeTab === 'edit')}
+          >
+            ✏️ Sửa ({candidates.filter(c => c.category === 'Need Update' || c.category === 'Need Review').length})
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'add' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('add'); setSelectedCandidate(null); }}
+            style={tabButtonStyle(activeTab === 'add')}
+          >
+            ➕ Thêm ({candidates.filter(c => c.category === 'Missing').length})
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'delete' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('delete'); setSelectedCandidate(null); }}
+            style={tabButtonStyle(activeTab === 'delete')}
+          >
+            🗑️ Xóa ({candidates.filter(c => c.category === 'New').length})
+          </button>
         </div>
 
-        {/* Section 2: Layer Control */}
-        <div className="sidebar-section layer-control-section">
-          <h3>🗺️ Layer Control</h3>
-          <div className="layer-list">
-            {[
-              { id: 'osmBase', label: 'Base Map (OSM)', color: '#bbb' },
-              { id: 'official', label: 'Official Boundary', color: '#3186cc' },
-              { id: 'osmBoundary', label: 'OSM Boundary', color: '#2ecc71' },
-              { id: 'difference', label: 'Difference Areas', color: '#f1c40f' },
-              { id: 'missing', label: 'Missing in OSM', color: '#e74c3c' },
-              { id: 'newBoundary', label: 'New in OSM', color: '#3498db' }
-            ].map(l => (
-              <div className="layer-item" key={l.id}>
-                <div className="layer-toggle-row">
-                  <label className="checkbox-container">
-                    <input
-                      type="checkbox"
-                      checked={layers[l.id as keyof LayerState]}
-                      onChange={() => toggleLayer(l.id as keyof LayerState)}
-                    />
-                    <span className="checkmark" style={{ borderColor: l.color }}></span>
-                    <span className="layer-label">{l.label}</span>
-                  </label>
-                </div>
-                <div className="opacity-slider-row">
-                  <span className="opacity-text">Opacity: {Math.round(opacities[l.id as keyof OpacityState] * 100)}%</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={opacities[l.id as keyof OpacityState]}
-                    onChange={(e) => changeOpacity(l.id as keyof OpacityState, parseFloat(e.target.value))}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Search filter in tab */}
+        <div style={{ marginBottom: '12px' }}>
+          <input
+            type="text"
+            placeholder="Tìm kiếm theo tên..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={inputStyle}
+          />
         </div>
 
-        {/* Section 3: Statistics */}
-        <div className="sidebar-section stats-section">
-          <h3>📊 Statistics Summary</h3>
-          {stats ? (
-            <div className="stats-grid">
-              <div className="stats-item">
-                <span className="stats-name">Total Official:</span>
-                <span className="stats-val">{stats.Summary?.Total_Official || 0}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-name green-text">Perfect Match:</span>
-                <span className="stats-val">{stats.Summary?.PerfectMatch || 0}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-name yellow-text">Changed / Diff:</span>
-                <span className="stats-val">{stats.Summary?.Changed || 0}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-name red-text">Missing in OSM:</span>
-                <span className="stats-val">{stats.Summary?.MissingInOSM || 0}</span>
-              </div>
-              <div className="stats-item">
-                <span className="stats-name blue-text">New in OSM:</span>
-                <span className="stats-val">{stats.Summary?.NewInOSM || 0}</span>
-              </div>
-
-              {/* Render charts generated by stats.py */}
-              <div className="visuals-container">
-                <h4>Status Chart</h4>
-                <img 
-                  src="http://localhost:8000/static/statistics/status_pie_chart.png" 
-                  alt="Pie Chart" 
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-                <h4>Overlap Distribution</h4>
-                <img 
-                  src="http://localhost:8000/static/statistics/overlap_histogram.png" 
-                  alt="Histogram" 
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-              </div>
-            </div>
+        {/* Candidate List */}
+        <div style={{ flexGrow: 1, overflowY: 'auto', marginBottom: '16px' }} className="candidate-list-scroll">
+          {filteredCandidates.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', marginTop: '20px' }}>
+              Không tìm thấy mục nào.
+            </p>
           ) : (
-            <p className="loading-text">Run pipeline.py and start API backend to load stats...</p>
+            filteredCandidates.map((c, i) => (
+              <div 
+                key={i} 
+                onClick={() => handleSelectCandidate(c)}
+                style={candidateItemStyle(selectedCandidate?.official_id === c.official_id && selectedCandidate?.osm_id === c.osm_id)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: '14px', color: 'var(--text-main)' }}>
+                    {c.official_name !== 'N/A' ? c.official_name : c.osm_name}
+                  </strong>
+                  {c.overlap_ratio > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--accent-yellow)', background: 'rgba(251, 191, 36, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                      {Math.round(c.overlap_ratio * 100)}% trùng
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  {c.province !== 'N/A' ? c.province : 'Chỉ có trên OSM'}
+                </div>
+              </div>
+            ))
           )}
         </div>
-      </div>
-      
-      <div className="map-container" ref={mapElement}></div>
 
-      {/* Map Popup Overlay */}
-      <div className="ol-popup" ref={popupElement}>
-        {selectedFeature && (
-          <div className="popup-content">
-            <h4>Feature Details</h4>
-            
-            {/* If it's a difference feature */}
-            {selectedFeature.fillColor && (
-              <>
-                <p><strong>Official Name:</strong> {selectedFeature.a03_ten || 'N/A'}</p>
-                <p><strong>OSM Name:</strong> {selectedFeature.osm_name || 'N/A'}</p>
-                <p><strong>Official ID:</strong> {selectedFeature.official_id || 'N/A'}</p>
-                <p><strong>OSM ID:</strong> {selectedFeature.osm_id || 'N/A'}</p>
-                <p><strong>Category:</strong> <span className="cat-pill" style={{backgroundColor: selectedFeature.fillColor}}>{selectedFeature.category || 'N/A'}</span></p>
-                <p><strong>Overlap Ratio:</strong> {selectedFeature.overlap_ratio ? `${(selectedFeature.overlap_ratio * 100).toFixed(2)}%` : 'N/A'}</p>
-                <p><strong>IoU (Overlap):</strong> {selectedFeature.iou ? `${(selectedFeature.iou * 100).toFixed(2)}%` : 'N/A'}</p>
-              </>
-            )}
-
-            {/* If it's a missing feature */}
-            {selectedFeature.category === "Missing in OSM" && (
-              <>
-                <p><strong>Official Name:</strong> {selectedFeature.official_name || 'N/A'}</p>
-                <p><strong>Province:</strong> {selectedFeature.province || 'N/A'}</p>
-                <p><strong>Official ID:</strong> {selectedFeature.official_id || 'N/A'}</p>
-                <p><strong>Category:</strong> <span className="cat-pill red-pill">{selectedFeature.category}</span></p>
-              </>
-            )}
-
-            {/* If it's a new feature */}
-            {selectedFeature.category === "New in OSM" && (
-              <>
-                <p><strong>OSM Name:</strong> {selectedFeature.osm_name || 'N/A'}</p>
-                <p><strong>OSM ID:</strong> {selectedFeature.osm_id || 'N/A'}</p>
-                <p><strong>Category:</strong> <span className="cat-pill blue-pill">{selectedFeature.category}</span></p>
-              </>
-            )}
-
-            {/* Default fallback */}
-            {!selectedFeature.category && (
-              <>
-                <p><strong>Name:</strong> {selectedFeature.name || selectedFeature.a03_ten || 'N/A'}</p>
-                <p><strong>ID:</strong> {selectedFeature.id || selectedFeature.a02_xa || 'N/A'}</p>
-                {selectedFeature.a04_tentinh && <p><strong>Province:</strong> {selectedFeature.a04_tentinh}</p>}
-              </>
-            )}
-            
-            <hr />
-            <div className="popup-actions">
-              <strong>Quick Actions:</strong>
-              <div className="action-row">
-                <button className="action-btn" onClick={() => alert("Marked to Keep OSM")}>Keep OSM</button>
-                <button className="action-btn primary" onClick={() => alert("Marked to Update Geometry")}>Update Geometry</button>
-              </div>
-            </div>
+        {/* Statistics section */}
+        {stats && (
+          <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', fontSize: '12px', color: 'var(--text-muted)' }}>
+            <strong>Tỷ lệ tổng quát:</strong> Khớp {stats.Summary?.perfect_match} | Lệch {stats.Summary?.need_update} | Thiếu {stats.Summary?.need_add} | Thừa {stats.Summary?.need_delete}
           </div>
         )}
       </div>
+
+      {/* Main Map Container */}
+      <div className="map-container" ref={mapElement} style={{ flexGrow: 1, position: 'relative' }}>
+        {loadingGeom && (
+          <div style={loadingOverlayStyle}>
+            <span style={{ fontSize: '14px', color: '#fff' }}>🔄 Đang tải ranh giới địa lý...</span>
+          </div>
+        )}
+
+        {/* Floating details panel for selected Candidate */}
+        {selectedCandidate && (
+          <div style={detailsPanelStyle}>
+            <h4 style={{ margin: '0 0 10px 0', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', color: 'var(--accent-blue)', fontSize: '16px' }}>
+              Chi Tiết Vùng Đối Soát
+            </h4>
+            <p style={detailRowStyle}><strong>Tên Official:</strong> {selectedCandidate.official_name}</p>
+            <p style={detailRowStyle}><strong>Tên OSM:</strong> {selectedCandidate.osm_name}</p>
+            <p style={detailRowStyle}><strong>Mã Official ID:</strong> {selectedCandidate.official_id}</p>
+            <p style={detailRowStyle}>
+              <strong>Mã OSM ID:</strong> {selectedCandidate.osm_id}{' '}
+              {selectedCandidate.osm_id !== 'N/A' && (
+                <a
+                  href={`https://www.openstreetmap.org/relation/${selectedCandidate.osm_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--accent-blue)', textDecoration: 'underline', marginLeft: '5px' }}
+                >
+                  (Xem trên OSM)
+                </a>
+              )}
+            </p>
+            <p style={detailRowStyle}><strong>Tỉnh/TP:</strong> {selectedCandidate.province}</p>
+            <p style={detailRowStyle}><strong>Lý do hành động:</strong> <span style={{ color: 'var(--accent-yellow)' }}>{selectedCandidate.reason}</span></p>
+
+            <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button 
+                onClick={handleSyncToOSM}
+                style={syncButtonStyle(activeTab === 'delete' ? 'delete' : (activeTab === 'add' ? 'add' : 'edit'))}
+              >
+                {activeTab === 'add' ? '➕ Đồng bộ Thêm mới lên OSM' : (activeTab === 'delete' ? '🗑️ Đồng bộ Xóa khỏi OSM' : '✏️ Đồng bộ Chỉnh sửa lên OSM')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Color Legend overlay */}
+        <div style={legendStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #3498db', backgroundColor: 'rgba(52, 152, 219, 0.15)', borderRadius: '2px' }}></span>
+            <span>Ranh giới Official (Nhà nước)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #2ecc71', backgroundColor: 'rgba(46, 204, 113, 0.15)', borderRadius: '2px' }}></span>
+            <span>Ranh giới OSM hiện tại</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(231, 76, 60, 0.65)', borderRadius: '2px' }}></span>
+            <span>Phần ranh giới OSM thừa (Cần cắt)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(52, 152, 219, 0.65)', borderRadius: '2px' }}></span>
+            <span>Phần ranh giới OSM thiếu (Cần bù)</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
+}
+
+// Inline Styles for simplicity and premium UI
+const tabButtonStyle = (isActive: boolean) => ({
+  flex: 1,
+  padding: '10px 4px',
+  background: isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(0, 0, 0, 0.3)',
+  border: `1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border-color)'}`,
+  borderRadius: '6px',
+  color: isActive ? 'var(--accent-blue)' : 'var(--text-muted)',
+  cursor: 'pointer',
+  fontSize: '12.5px',
+  fontWeight: isActive ? '600' : '400',
+  transition: 'all 0.2s',
+  textAlign: 'center' as const
+})
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  background: 'rgba(0,0,0,0.3)',
+  border: '1px solid var(--border-color)',
+  borderRadius: '6px',
+  color: 'var(--text-main)',
+  fontFamily: 'inherit',
+  fontSize: '13px',
+  boxSizing: 'border-box' as const
+}
+
+const candidateItemStyle = (isSelected: boolean) => ({
+  padding: '12px',
+  background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255,255,255,0.01)',
+  border: `1px solid ${isSelected ? 'var(--accent-blue)' : 'var(--border-color)'}`,
+  borderRadius: '8px',
+  cursor: 'pointer',
+  marginBottom: '8px',
+  transition: 'all 0.2s'
+})
+
+const loadingOverlayStyle = {
+  position: 'absolute' as const,
+  top: '20px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: 'rgba(15, 23, 42, 0.85)',
+  padding: '10px 20px',
+  borderRadius: '24px',
+  zIndex: 1000,
+  border: '1px solid var(--border-color)',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+  backdropFilter: 'blur(8px)'
+}
+
+const detailsPanelStyle = {
+  position: 'absolute' as const,
+  top: '20px',
+  right: '20px',
+  background: 'rgba(15, 23, 42, 0.9)',
+  border: '1px solid var(--border-color)',
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+  padding: '20px',
+  borderRadius: '12px',
+  width: '320px',
+  zIndex: 100,
+  color: 'var(--text-main)',
+  backdropFilter: 'blur(16px)',
+  maxHeight: '85%',
+  overflowY: 'auto' as const
+}
+
+const legendStyle = {
+  position: 'absolute' as const,
+  bottom: '20px',
+  right: '20px',
+  background: 'rgba(15, 23, 42, 0.9)',
+  border: '1px solid var(--border-color)',
+  boxShadow: '0 4px 15px rgba(0, 0, 0, 0.4)',
+  padding: '12px 16px',
+  borderRadius: '8px',
+  zIndex: 100,
+  color: 'var(--text-main)',
+  backdropFilter: 'blur(8px)'
+}
+
+const detailRowStyle = {
+  margin: '8px 0',
+  fontSize: '13px',
+  lineHeight: '1.4'
+}
+
+const syncButtonStyle = (type: 'add' | 'delete' | 'edit') => {
+  const color = 
+    type === 'add' ? 'var(--accent-green)' :
+    type === 'delete' ? 'var(--accent-red)' :
+    'var(--accent-blue)';
+    
+  return {
+    width: '100%',
+    padding: '10px',
+    background: color,
+    border: `1px solid ${color}`,
+    borderRadius: '6px',
+    color: '#0b0f19',
+    fontWeight: '700',
+    fontSize: '13px',
+    cursor: 'pointer',
+    boxShadow: `0 4px 10px rgba(0, 0, 0, 0.2)`,
+    transition: 'all 0.2s'
+  }
 }
 
 export default App

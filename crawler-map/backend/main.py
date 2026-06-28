@@ -4,6 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,39 +39,85 @@ def load_geojson(subfolder: str, filename: str):
     logger.warning(f"File not found: {path}")
     return {"type": "FeatureCollection", "features": []}
 
+# Pre-load datasets at startup for fast O(1) lookups
+logger.info("Pre-loading simplified boundary datasets into memory for fast lookup...")
+
+OFFICIAL_DICT = {}
+try:
+    off_data = load_geojson("simplified", "official_communes.geojson")
+    for feat in off_data.get("features", []):
+        off_id = str(feat.get("properties", {}).get("a02_xa") or feat.get("properties", {}).get("id") or "")
+        if off_id:
+            OFFICIAL_DICT[off_id] = feat
+    logger.info(f"Loaded {len(OFFICIAL_DICT)} official commune geometries.")
+except Exception as e:
+    logger.error(f"Failed to pre-load official communes: {e}")
+
+OSM_DICT = {}
+try:
+    osm_data = load_geojson("simplified", "osm_communes.geojson")
+    for feat in osm_data.get("features", []):
+        osm_id = str(feat.get("properties", {}).get("@id") or feat.get("properties", {}).get("id") or "")
+        if osm_id:
+            OSM_DICT[osm_id] = feat
+    logger.info(f"Loaded {len(OSM_DICT)} OSM commune geometries.")
+except Exception as e:
+    logger.error(f"Failed to pre-load OSM communes: {e}")
+
+DIFF_DICT = {}  # Maps official_id -> list of difference features
+try:
+    diff_data = load_geojson("comparison", "difference.geojson")
+    for feat in diff_data.get("features", []):
+        off_id = str(feat.get("properties", {}).get("official_id") or "")
+        if off_id:
+            if off_id not in DIFF_DICT:
+                DIFF_DICT[off_id] = []
+            DIFF_DICT[off_id].append(feat)
+    logger.info(f"Loaded differences for {len(DIFF_DICT)} communes.")
+except Exception as e:
+    logger.error(f"Failed to pre-load difference geometries: {e}")
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to GIS Province Regulator API"}
 
-@app.get("/official/communes")
-def get_official_communes():
-    """Get list of Official boundary communes (simplified for performance)"""
-    return load_geojson("simplified", "official_communes.geojson")
+@app.get("/candidates/metadata")
+def get_candidates_metadata():
+    """Get candidates metadata list (lightweight, no geometry, for fast loading)"""
+    path = os.path.join(OUTPUT_DIR, "candidates", "candidate.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading candidates metadata: {e}")
+            return []
+    return []
 
-@app.get("/osm/communes")
-def get_osm_communes():
-    """Get list of OSM boundary communes (simplified for performance)"""
-    return load_geojson("simplified", "osm_communes.geojson")
-
-@app.get("/difference")
-def get_difference():
-    """Get spatial differences (red/blue/yellow/purple layer)"""
-    return load_geojson("comparison", "difference.geojson")
-
-@app.get("/missing")
-def get_missing_communes():
-    """Get boundaries that are missing in OSM"""
-    return load_geojson("comparison", "missing.geojson")
-
-@app.get("/new")
-def get_new_communes():
-    """Get boundaries that are new/unmatched in OSM"""
-    return load_geojson("comparison", "new.geojson")
-
-@app.get("/candidates")
-def get_candidates():
-    """Get candidates for AI review"""
-    return load_geojson("candidates", "candidate.geojson")
+@app.get("/candidate/{official_id}/geometry")
+def get_candidate_geometry(official_id: str, osm_id: str = "N/A"):
+    """
+    Get specific geometries for a single candidate commune on-demand:
+    - Official geometry
+    - OSM geometry
+    - Difference geometries
+    """
+    official_id = str(official_id)
+    osm_id = str(osm_id)
+    
+    official_geom = OFFICIAL_DICT.get(official_id)
+    osm_geom = OSM_DICT.get(osm_id) if osm_id != "N/A" else None
+    diff_geoms = DIFF_DICT.get(official_id, [])
+    
+    return {
+        "official": official_geom,
+        "osm": osm_geom,
+        "difference": {
+            "type": "FeatureCollection",
+            "features": diff_geoms
+        }
+    }
 
 @app.get("/statistics")
 def get_statistics():
@@ -85,23 +132,29 @@ def get_statistics():
             return {}
     return {}
 
-@app.get("/search")
-def search_features(q: str):
-    """Search official communes by name"""
-    data = load_geojson("simplified", "official_communes.geojson")
-    results = []
-    q = q.lower().strip()
-    if not q:
-        return {"type": "FeatureCollection", "features": []}
+class EditOSMRequest(BaseModel):
+    official_id: str
+    osm_id: str
+    action: str
+
+@app.post("/api/edit-osm")
+def edit_osm(payload: EditOSMRequest):
+    """
+    Mock API endpoint to edit OpenStreetMap.
+    This simulates saving, adding, or deleting relation geometries in OSM database.
+    """
+    logger.info(f"OSM edit API called for official_id: {payload.official_id}, osm_id: {payload.osm_id}, action: {payload.action}")
+    
+    action_text = "chuẩn hóa ranh giới"
+    if payload.action == "create":
+        action_text = "thêm mới xã"
+    elif payload.action == "delete":
+        action_text = "xóa ranh giới thừa"
         
-    for feat in data.get("features", []):
-        props = feat.get("properties", {})
-        # Check standard name columns
-        name_val = props.get("a03_ten") or props.get("name") or ""
-        if q in str(name_val).lower():
-            results.append(feat)
-            
-    return {"type": "FeatureCollection", "features": results}
+    return {
+        "status": "success",
+        "message": f"Đồng bộ thành công! Yêu cầu {action_text} đối với ID {payload.osm_id or payload.official_id} đã được gửi lên OpenStreetMap."
+    }
 
 if __name__ == "__main__":
     import uvicorn
