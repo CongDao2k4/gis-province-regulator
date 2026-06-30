@@ -54,13 +54,13 @@ class CandidateGenerator:
             name_sim = r['name_similarity']
             
             # Category decision tree
-            if overlap >= 0.98 and name_sim >= 0.90:
+            if overlap >= 0.95 and name_sim >= 0.90:
                 category = "Matched"
                 reason = "Trùng khớp hoàn hảo cả hình học và tên gọi."
             elif overlap >= 0.95 and name_sim < 0.80:
                 category = "Need Review"
                 reason = "Độ chồng đè cao nhưng tên khác nhau (Cần kiểm tra đổi tên xã)."
-            elif overlap < 0.98 and overlap >= 0.50 and name_sim >= 0.80:
+            elif overlap < 0.95 and overlap >= 0.50 and name_sim >= 0.80:
                 category = "Need Update"
                 reason = "Tên khớp nhưng ranh giới hình học bị lệch (Cần sửa lại ranh giới)."
             else:

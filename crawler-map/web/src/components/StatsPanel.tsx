@@ -3,10 +3,10 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 import { useMapContext } from '../context/MapContext'
 
 const COLORS = {
-  matched: '#4ade80',
-  changed: '#ef4444',
-  missing: '#a855f7',
-  new: '#eab308',
+  matched: '#94a3b8', // Slate (neutral)
+  changed: '#f97316', // Orange (Modified / Edit)
+  missing: '#22c55e', // Green (Add)
+  new: '#ef4444',     // Red (Delete)
 }
 
 export default function StatsPanel() {

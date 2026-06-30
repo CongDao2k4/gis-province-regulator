@@ -48,14 +48,13 @@ export interface ToastMessage {
 
 export type ActivePanel = 'layers' | 'stats' | 'review' | 'table' | 'export' | 'ai'
 
-// ── Layer config (colors, labels) ──────────────────────────────────
 export const LAYER_CONFIG = [
-  { id: 'osmBase', label: 'Base Map (OSM)', color: '#94a3b8', strokeColor: '#94a3b8' },
-  { id: 'official', label: 'Official Boundary', color: '#f97316', strokeColor: '#f97316' },
-  { id: 'osmBoundary', label: 'OSM Boundary', color: '#38bdf8', strokeColor: '#38bdf8' },
-  { id: 'difference', label: 'Difference Areas', color: '#ef4444', strokeColor: '#ef4444' },
-  { id: 'missing', label: 'Missing (Official)', color: '#a855f7', strokeColor: '#a855f7' },
-  { id: 'newBoundary', label: 'New (OSM only)', color: '#eab308', strokeColor: '#eab308' },
+  { id: 'osmBase', label: 'Bản đồ nền (OSM)', color: '#94a3b8', strokeColor: '#94a3b8' },
+  { id: 'official', label: 'Ranh giới Official (Cam)', color: '#f97316', strokeColor: '#f97316' },
+  { id: 'osmBoundary', label: 'Ranh giới OSM (Xanh dương)', color: '#38bdf8', strokeColor: '#38bdf8' },
+  { id: 'difference', label: 'Vùng lệch ranh giới (Tím/Đỏ/Lam)', color: '#a855f7', strokeColor: '#a855f7' },
+  { id: 'missing', label: 'Xã thiếu - Cần THÊM (Xanh lá)', color: '#22c55e', strokeColor: '#22c55e' },
+  { id: 'newBoundary', label: 'Vùng thừa - Cần XÓA (Đỏ)', color: '#ef4444', strokeColor: '#ef4444' },
 ] as const
 
 // ── Context value ──────────────────────────────────────────────────

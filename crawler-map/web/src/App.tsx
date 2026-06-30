@@ -26,26 +26,41 @@ function App() {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Map | null>(null)
   const activeSourceRef = useRef<VectorSource | null>(null)
-  
+
   const [stats, setStats] = useState<any>(null)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [activeTab, setActiveTab] = useState<'edit' | 'add' | 'delete'>('edit')
   const [loadingGeom, setLoadingGeom] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [admLevel, setAdmLevel] = useState<'commune' | 'province'>('commune')
 
-  // 1. Fetch initial statistics and candidates metadata (extremely lightweight)
-  useEffect(() => {
-    fetch('http://localhost:8000/statistics')
+  const refreshData = () => {
+    const apiBase = admLevel === 'province' ? 'http://localhost:8000/tinh' : 'http://localhost:8000'
+    
+    fetch(`${apiBase}/statistics`)
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(err => console.error("Error fetching stats:", err))
 
-    fetch('http://localhost:8000/candidates/metadata')
+    fetch(`${apiBase}/candidates/metadata`)
       .then(res => res.json())
       .then(data => setCandidates(data))
       .catch(err => console.error("Error fetching candidates:", err))
-  }, [])
+  }
+
+  // 1. Fetch initial statistics and candidates metadata
+  useEffect(() => {
+    refreshData()
+  }, [admLevel])
+
+  const handleLevelChange = (level: 'commune' | 'province') => {
+    setAdmLevel(level)
+    setSelectedCandidate(null)
+    if (activeSourceRef.current) {
+      activeSourceRef.current.clear()
+    }
+  }
 
   // 2. Initialize Map (only base OSM layer + active vector layer for selection)
   useEffect(() => {
@@ -64,30 +79,27 @@ function App() {
       const type = feature.get('layerType')
       if (type === 'official') {
         return new Style({
-          fill: new Fill({ color: 'rgba(52, 152, 219, 0.12)' }),
-          stroke: new Stroke({ color: '#3498db', width: 2.5 })
+          fill: new Fill({ color: 'rgba(16, 185, 129, 0.12)' }),
+          stroke: new Stroke({ color: '#10b981', width: 2.5 })
         })
       } else if (type === 'osm') {
         return new Style({
-          fill: new Fill({ color: 'rgba(46, 204, 113, 0.12)' }),
-          stroke: new Stroke({ color: '#2ecc71', width: 2.5 })
+          fill: new Fill({ color: 'rgba(59, 130, 246, 0.12)' }),
+          stroke: new Stroke({ color: '#3b82f6', width: 2.5 })
         })
       } else if (type === 'difference') {
         const fillColorVal = feature.get('fillColor')
-        let fillColor = 'rgba(231, 76, 60, 0.45)' // red: excess OSM
-        let strokeColor = '#e74c3c'
+        let fillColor = 'rgba(239, 68, 68, 0.65)' // red: excess OSM (Only in OSM)
+        let strokeColor = '#ef4444'
         
-        if (fillColorVal === 'blue') {
-          fillColor = 'rgba(52, 152, 219, 0.45)' // blue: missing on OSM
-          strokeColor = '#3498db'
+        if (fillColorVal === 'purple' || fillColorVal === 'blue') {
+          fillColor = 'rgba(168, 85, 247, 0.65)' // purple: missing on OSM (Only in Official) / shape changed
+          strokeColor = '#a855f7'
         } else if (fillColorVal === 'yellow') {
           fillColor = 'rgba(241, 196, 15, 0.35)' // yellow: intersection
           strokeColor = '#f1c40f'
-        } else if (fillColorVal === 'purple') {
-          fillColor = 'rgba(155, 89, 182, 0.45)' // purple: shape changed
-          strokeColor = '#9b59b6'
         }
-        
+
         return new Style({
           fill: new Fill({ color: fillColor }),
           stroke: new Stroke({ color: strokeColor, width: 1.5 })
@@ -125,7 +137,8 @@ function App() {
     setLoadingGeom(true)
     activeSourceRef.current.clear()
 
-    fetch(`http://localhost:8000/candidate/${candidate.official_id}/geometry?osm_id=${candidate.osm_id}`)
+    const apiBase = admLevel === 'province' ? 'http://localhost:8000/tinh' : 'http://localhost:8000'
+    fetch(`${apiBase}/candidate/${candidate.official_id}/geometry?osm_id=${candidate.osm_id}`)
       .then(res => res.json())
       .then(data => {
         const format = new GeoJSON()
@@ -140,7 +153,6 @@ function App() {
           feat.set('layerType', 'official')
           features.push(feat)
         }
-
         // Parse OSM geometry
         if (data.osm) {
           const feat = format.readFeature(data.osm, {
@@ -165,15 +177,17 @@ function App() {
 
         if (activeSourceRef.current) {
           activeSourceRef.current.addFeatures(features)
-          const extent = activeSourceRef.current.getExtent()
-          if (extent && extent[0] !== Infinity && extent[0] !== -Infinity) {
-            mapRef.current.getView().fit(extent, {
-              duration: 800,
-              padding: [80, 80, 80, 80],
-              maxZoom: 15
-            })
-          }
         }
+        // Zoom to the extent of loaded geometries
+        const extent = activeSourceRef.current?.getExtent()
+        if (extent && extent[0] !== Infinity && extent[0] !== -Infinity) {
+          mapRef.current?.getView().fit(extent, {
+            duration: 800,
+            padding: [100, 100, 100, 100],
+            maxZoom: 14
+          })
+        }
+
         setLoadingGeom(false)
       })
       .catch(err => {
@@ -187,8 +201,12 @@ function App() {
     if (!selectedCandidate) return;
 
     const action = activeTab === 'add' ? 'create' : (activeTab === 'delete' ? 'delete' : 'modify');
-    
-    fetch('http://localhost:8000/api/edit-osm', {
+
+    const syncUrl = admLevel === 'province' 
+      ? 'http://localhost:8000/tinh/api/edit-tinh' 
+      : 'http://localhost:8000/api/edit-osm'
+
+    fetch(syncUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -202,20 +220,23 @@ function App() {
       .then(res => res.json())
       .then(data => {
         alert(data.message)
+        setSelectedCandidate(null)
+        if (activeSourceRef.current) activeSourceRef.current.clear()
+        refreshData() // Reload backend statistics and metadata candidates
       })
       .catch(err => {
         console.error("OSM sync error:", err)
-        alert("Có lỗi xảy ra khi đồng bộ lên OSM.")
       })
   }
 
   // Filter candidates based on active tab
   const filteredCandidates = candidates.filter(c => {
-    const isTabMatch = 
+    const isTabMatch =
       activeTab === 'add' ? c.category === 'Missing' :
-      activeTab === 'delete' ? c.category === 'New' :
-      (c.category === 'Need Update' || c.category === 'Need Review');
-      
+        activeTab === 'delete' ? c.category === 'New' :
+          activeTab === 'matched' ? c.category === 'Matched' :
+            (c.category === 'Need Update' || c.category === 'Need Review');
+
     if (!isTabMatch) return false;
 
     // Optional name search filter
@@ -236,28 +257,73 @@ function App() {
           <span className="subtitle font-outfit">OSM Boundary Normalization</span>
         </div>
 
+        {/* Administrative Level Toggle Switch */}
+        <div className="level-toggle-container" style={{ display: 'flex', gap: '8px', padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <button
+            onClick={() => handleLevelChange('commune')}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              background: admLevel === 'commune' ? '#10b981' : 'transparent',
+              color: admLevel === 'commune' ? '#fff' : '#8a99ad',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              fontSize: '12px'
+            }}
+          >
+            🇻🇳 Xã/Phường
+          </button>
+          <button
+            onClick={() => handleLevelChange('province')}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              background: admLevel === 'province' ? '#10b981' : 'transparent',
+              color: admLevel === 'province' ? '#fff' : '#8a99ad',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              fontSize: '12px'
+            }}
+          >
+            🗺️ Tỉnh/Quốc Gia
+          </button>
+        </div>
+
         {/* Tab Selection */}
-        <div className="tab-container" style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-          <button 
+        <div className="tab-container" style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <button
             className={`tab-btn ${activeTab === 'edit' ? 'active' : ''}`}
             onClick={() => { setActiveTab('edit'); setSelectedCandidate(null); }}
             style={tabButtonStyle(activeTab === 'edit')}
           >
             ✏️ Sửa ({candidates.filter(c => c.category === 'Need Update' || c.category === 'Need Review').length})
           </button>
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'add' ? 'active' : ''}`}
             onClick={() => { setActiveTab('add'); setSelectedCandidate(null); }}
             style={tabButtonStyle(activeTab === 'add')}
           >
             ➕ Thêm ({candidates.filter(c => c.category === 'Missing').length})
           </button>
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'delete' ? 'active' : ''}`}
             onClick={() => { setActiveTab('delete'); setSelectedCandidate(null); }}
             style={tabButtonStyle(activeTab === 'delete')}
           >
             🗑️ Xóa ({candidates.filter(c => c.category === 'New').length})
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'matched' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('matched'); setSelectedCandidate(null); }}
+            style={tabButtonStyle(activeTab === 'matched')}
+          >
+            ✔️ Khớp ({candidates.filter(c => c.category === 'Matched').length})
           </button>
         </div>
 
@@ -280,8 +346,8 @@ function App() {
             </p>
           ) : (
             filteredCandidates.map((c, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 onClick={() => handleSelectCandidate(c)}
                 style={candidateItemStyle(selectedCandidate?.official_id === c.official_id && selectedCandidate?.osm_id === c.osm_id)}
               >
@@ -345,7 +411,7 @@ function App() {
             <p style={detailRowStyle}><strong>Lý do hành động:</strong> <span style={{ color: 'var(--accent-yellow)' }}>{selectedCandidate.reason}</span></p>
 
             <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button 
+              <button
                 onClick={handleSyncToOSM}
                 style={syncButtonStyle(activeTab === 'delete' ? 'delete' : (activeTab === 'add' ? 'add' : 'edit'))}
               >
@@ -358,19 +424,19 @@ function App() {
         {/* Color Legend overlay */}
         <div style={legendStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #3498db', backgroundColor: 'rgba(52, 152, 219, 0.15)', borderRadius: '2px' }}></span>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #10b981', backgroundColor: 'rgba(16, 185, 129, 0.15)', borderRadius: '2px' }}></span>
             <span>Ranh giới Official (Nhà nước)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
-            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #2ecc71', backgroundColor: 'rgba(46, 204, 113, 0.15)', borderRadius: '2px' }}></span>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px dashed #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.15)', borderRadius: '2px' }}></span>
             <span>Ranh giới OSM hiện tại</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
-            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(231, 76, 60, 0.65)', borderRadius: '2px' }}></span>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(239, 68, 68, 0.65)', borderRadius: '2px' }}></span>
             <span>Phần ranh giới OSM thừa (Cần cắt)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '6px' }}>
-            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(52, 152, 219, 0.65)', borderRadius: '2px' }}></span>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'rgba(168, 85, 247, 0.65)', borderRadius: '2px' }}></span>
             <span>Phần ranh giới OSM thiếu (Cần bù)</span>
           </div>
         </div>
@@ -468,11 +534,11 @@ const detailRowStyle = {
 }
 
 const syncButtonStyle = (type: 'add' | 'delete' | 'edit') => {
-  const color = 
+  const color =
     type === 'add' ? 'var(--accent-green)' :
-    type === 'delete' ? 'var(--accent-red)' :
-    'var(--accent-blue)';
-    
+      type === 'delete' ? 'var(--accent-red)' :
+        'var(--accent-blue)';
+
   return {
     width: '100%',
     padding: '10px',

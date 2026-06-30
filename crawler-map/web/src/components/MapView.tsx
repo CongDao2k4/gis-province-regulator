@@ -103,16 +103,16 @@ export default function MapView() {
       })
     }
 
-    // Missing = Tím
+    // Missing = Xanh lá (Cần THÊM)
     const missingStyle = new Style({
-      fill: new Fill({ color: 'rgba(168, 85, 247, 0.2)' }),
-      stroke: new Stroke({ color: '#a855f7', width: 2, lineDash: [4, 4] }),
+      fill: new Fill({ color: 'rgba(34, 197, 94, 0.2)' }),
+      stroke: new Stroke({ color: '#22c55e', width: 2, lineDash: [4, 4] }),
     })
 
-    // New = Vàng
+    // New = Đỏ (Cần XÓA)
     const newStyle = new Style({
-      fill: new Fill({ color: 'rgba(234, 179, 8, 0.2)' }),
-      stroke: new Stroke({ color: '#eab308', width: 2, lineDash: [4, 4] }),
+      fill: new Fill({ color: 'rgba(239, 68, 68, 0.2)' }),
+      stroke: new Stroke({ color: '#ef4444', width: 2, lineDash: [4, 4] }),
     })
 
     // ── Layers ──

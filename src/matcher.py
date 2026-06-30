@@ -11,18 +11,30 @@ from shapely.geometry import Polygon, MultiPolygon
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("matcher")
 
+import unicodedata
+
 def clean_name(name: str) -> str:
     """Normalize and clean administrative names for better matching."""
     if not name:
         return ""
-    # Convert to lowercase
-    n = name.lower()
+    # Enforce Precomposed Unicode (NFC) normalization to prevent NFD vs NFC mismatches
+    n = unicodedata.normalize('NFC', name.lower())
     
-    # Remove accents/diacritics if necessary, but RapidFuzz is fine with accents.
+    # Normalize Vietnamese tone mark placement conventions (old vs new spelling styles)
+    tone_replacements = {
+        "oà": "òa", "oá": "óa", "oả": "ỏa", "oã": "õa", "oạ": "ọa",
+        "oè": "òe", "oé": "óe", "oẻ": "ỏe", "oẽ": "õe", "oẹ": "ọe",
+        "uỳ": "ùy", "uý": "úy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy",
+        "uỳ": "ùy", "uý": "úy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy"
+    }
+    for k, v in tone_replacements.items():
+        n = n.replace(k, v)
+        
     # Remove common prefix descriptors for communes/districts/provinces in Vietnam
     prefixes = [
         r"^xã\s+", r"^phường\s+", r"^thị\s*trấn\s+", r"^thị\s*xã\s+",
-        r"^huyện\s+", r"^quận\s+", r"^thành\s*phố\s+", r"^tỉnh\s+"
+        r"^huyện\s+", r"^quận\s+", r"^thành\s*phố\s+", r"^tỉnh\s+",
+        r"^thủ\s*đô\s+"
     ]
     for pattern in prefixes:
         n = re.sub(pattern, "", n)

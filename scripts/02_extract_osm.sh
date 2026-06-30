@@ -5,20 +5,20 @@ set -e
 cd "$(dirname "$0")/.."
 
 INPUT_FILE="data_osm/vietnam-260601.osm.pbf"
-FILTERED_FILE="data/osm/osm_admin_filtered.osm.pbf"
-GEOJSON_FILE="data/osm/boundary.geojson"
+FILTERED_FILE="data/raw_osm/osm_admin_filtered.osm.pbf"
+GEOJSON_FILE="data/raw_osm/boundary.geojson"
 
-# Tạo thư mục data/osm nếu chưa có
-mkdir -p data/osm
+# Tạo thư mục data/raw_osm nếu chưa có
+mkdir -p data/raw_osm
 
 echo "[INFO] Đang lọc dữ liệu hành chính từ OSM PBF (Bước 1: Lấy boundary=administrative)..."
-osmium tags-filter "$INPUT_FILE" boundary=administrative -o data/osm/temp_admin.osm.pbf --overwrite
+osmium tags-filter "$INPUT_FILE" boundary=administrative -o data/raw_osm/temp_admin.osm.pbf --overwrite
 
 echo "[INFO] Đang lọc dữ liệu hành chính từ OSM PBF (Bước 2: Lọc tiếp admin_level=4,5,6,7,8,9)..."
-osmium tags-filter data/osm/temp_admin.osm.pbf admin_level=4,5,6,7,8,9 -o "$FILTERED_FILE" --overwrite
+osmium tags-filter data/raw_osm/temp_admin.osm.pbf admin_level=4,5,6,7,8,9 -o "$FILTERED_FILE" --overwrite
 
 # Xoá file tạm sau khi lọc xong
-rm data/osm/temp_admin.osm.pbf
+rm data/raw_osm/temp_admin.osm.pbf
 
 echo "[INFO] Đang xuất dữ liệu sang định dạng GeoJSON..."
 # Sử dụng cấu hình JSON để quyết định giữ lại tags nào, và chỉ xuất dạng Polygon

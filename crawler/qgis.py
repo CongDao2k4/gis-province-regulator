@@ -9,7 +9,7 @@ class SapNhapCrawler:
     def __init__(self):
         self.wfs_url = "https://email.bando.com.vn/cgi-bin/qgis_mapserv.fcgi.exe"
         self.map_file = "D:/qgisserver/sapnhap/vnsapnhap10.qgz"
-        self.output_dir = "data/official"
+        self.output_dir = "data/raw_official"
         os.makedirs(self.output_dir, exist_ok=True)
 
     def fetch_layer(self, layer_name, output_file):

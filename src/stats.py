@@ -33,10 +33,13 @@ class StatisticsGenerator:
         stats = {}
         
         # Classify matches in compare results
-        # We categorize matched records into 'Perfect Match' (overlap >= 0.98) and 'Changed' (overlap < 0.98)
         if not self.df.empty:
-            perfect_matches = self.df[self.df['overlap_ratio'] >= 0.98]
-            changed = self.df[self.df['overlap_ratio'] < 0.98]
+            perfect_matches = self.df[self.df['overlap_ratio'] >= 0.95]
+            changed = self.df[self.df['overlap_ratio'] < 0.95]
+            
+            # Count name mismatches (name similarity < 90% after NFC cleaning)
+            name_mismatches = self.df[self.df['name_similarity'] < 0.90]
+            name_mismatch_count = len(name_mismatches)
             
             stats["Summary"] = {
                 "total_official": len(self.df) + self.missing_count,
@@ -44,7 +47,8 @@ class StatisticsGenerator:
                 "perfect_match": len(perfect_matches),
                 "need_update": len(changed),
                 "need_add": self.missing_count,
-                "need_delete": self.new_count
+                "need_delete": self.new_count,
+                "name_mismatch": name_mismatch_count
             }
         else:
             stats["Summary"] = {
@@ -53,7 +57,8 @@ class StatisticsGenerator:
                 "perfect_match": 0,
                 "need_update": 0,
                 "need_add": self.missing_count,
-                "need_delete": self.new_count
+                "need_delete": self.new_count,
+                "name_mismatch": 0
             }
 
         # 1. Generate Matplotlib Charts
@@ -131,6 +136,26 @@ class StatisticsGenerator:
         # 4. Export HTML Report (in Vietnamese)
         html_path = os.path.join(output_dir, "statistics.html")
         
+        # Build Name Mismatches HTML rows
+        name_rows_html = ""
+        if not self.df.empty:
+            name_mismatches_df = self.df[self.df['name_similarity'] < 0.90].sort_values(by="name_similarity")
+            if not name_mismatches_df.empty:
+                for _, r in name_mismatches_df.iterrows():
+                    name_rows_html += f"""
+                    <tr>
+                        <td>{r['official_id']}</td>
+                        <td>{r['official_name']}</td>
+                        <td>{r['province']}</td>
+                        <td>{r['osm_id']}</td>
+                        <td>{r['osm_name']}</td>
+                        <td>{r['name_similarity']*100:.1f}%</td>
+                        <td>{r['overlap_ratio']*100:.2f}%</td>
+                    </tr>
+                    """
+        if not name_rows_html:
+            name_rows_html = "<tr><td colspan='7' style='text-align:center; color:#7f8c8d;'>Không có xã nào sai lệch tên gọi theo chuẩn NFC.</td></tr>"
+
         top_rows_html = ""
         if not top_diff.empty:
             for _, r in top_diff.iterrows():
@@ -247,8 +272,12 @@ class StatisticsGenerator:
                 <div class="card-value">{stats["Summary"]["perfect_match"]}</div>
             </div>
             <div class="card warning">
-                <div>Vùng cần sửa ranh giới (Lệch ranh giới)</div>
+                <div>Vùng lệch ranh giới (&lt;95% trùng)</div>
                 <div class="card-value">{stats["Summary"]["need_update"]}</div>
+            </div>
+            <div class="card warning" style="border-left-color: #9b59b6;">
+                <div>Sai lệch tên gọi (Chuẩn NFC &lt;90%)</div>
+                <div class="card-value">{stats["Summary"]["name_mismatch"]}</div>
             </div>
             <div class="card danger">
                 <div>Vùng cần thêm mới (Thiếu trên OSM)</div>
@@ -283,6 +312,24 @@ class StatisticsGenerator:
             </thead>
             <tbody>
                 {top_rows_html}
+            </tbody>
+        </table>
+
+        <h2>Danh sách Xã sai lệch tên gọi theo chuẩn NFC (Fuzzy Match &lt; 90%)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã Xã Official</th>
+                    <th>Tên Xã Official</th>
+                    <th>Tỉnh/Thành phố</th>
+                    <th>OSM Relation ID</th>
+                    <th>Tên Xã OSM</th>
+                    <th>Độ tương đồng tên</th>
+                    <th>Tỷ lệ trùng khớp ranh giới</th>
+                </tr>
+            </thead>
+            <tbody>
+                {name_rows_html}
             </tbody>
         </table>
     </div>

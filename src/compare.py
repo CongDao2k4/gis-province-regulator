@@ -146,8 +146,8 @@ class GeometryComparer:
             if off_geom_4326 is not None and osm_geom_4326 is not None:
                 try:
                     # Clean/fix and simplify geometries (to 10m/0.0001 deg) to optimize differences speed
-                    off_geom_4326 = make_valid(off_geom_4326).simplify(0.0001, preserve_topology=True)
-                    osm_geom_4326 = make_valid(osm_geom_4326).simplify(0.0001, preserve_topology=True)
+                    off_geom_4326 = make_valid(off_geom_4326.simplify(0.0001, preserve_topology=True))
+                    osm_geom_4326 = make_valid(osm_geom_4326.simplify(0.0001, preserve_topology=True))
                     
                     # Compute spatial differences
                     osm_only = osm_geom_4326.difference(off_geom_4326)
@@ -177,9 +177,11 @@ class GeometryComparer:
                         add_diff_feature(off_only, "purple", "Geometry Changed")
                         add_diff_feature(osm_only, "purple", "Geometry Changed")
                     else:
+                        # Red: Only in OSM (extra area on OSM -> needs to be cut)
                         add_diff_feature(osm_only, "red", "Only in OSM")
-                        add_diff_feature(off_only, "blue", "Only in Official")
-                        add_diff_feature(overlap_geom, "yellow", "Overlap")
+                        # Purple: Only in Official (missing area on OSM -> needs to be added)
+                        add_diff_feature(off_only, "purple", "Only in Official")
+                        # (Removed overlap_geom to keep the map clean and focused on actual differences)
                         
                 except Exception as e:
                     logger.debug(f"Failed to generate difference polygons for match {off_id}: {e}")
